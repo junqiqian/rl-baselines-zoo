@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 import optuna
 import os
@@ -7,6 +8,7 @@ from optuna.integration.skopt import SkoptSampler
 from stable_baselines import SAC, TD3
 from stable_baselines.common.noise import AdaptiveParamNoiseSpec, NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from stable_baselines.common.vec_env import VecNormalize, VecEnv
+
 
 # Load mpi4py-dependent algorithms only if mpi is installed. (c.f. stable-baselines v2.10.0)
 try:
@@ -397,6 +399,63 @@ def sample_her_params(trial):
 
     return hyperparams
 
+def sample_penfac_params(trial):
+    """
+    Sampler for Penfac hyperparams.
+
+    :param trial: (optuna.trial)
+    :return: (dict)
+    """
+    batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256])
+    n_steps = trial.suggest_categorical('n_steps', [16, 32, 64, 128, 256, 512, 1024, 2048])
+    gamma = trial.suggest_categorical('gamma', [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999])
+    learning_rate = trial.suggest_loguniform('lr', 1e-5, 1)
+    ent_coef = trial.suggest_loguniform('ent_coef', 0.00000001, 0.1)
+    cliprange_ac = trial.suggest_categorical('cliprange_ac', [0.1, 0.2, 0.3, 0.4])
+    cliprange_norm = trial.suggest_categorical('cliprange_norm', [0.1, 0.2, 0.3, 0.4])
+    sigma = trial.suggest_categorical('sigma', [0.1, 0.2, 0.3, 0.4])
+    noptepochs = trial.suggest_categorical('noptepochs', [1, 5, 10, 20, 30, 50])
+    lam = trial.suggest_categorical('lambda', [0.8, 0.9, 0.92, 0.95, 0.98, 0.99, 1.0])
+    activation_function = trial.suggest_categorical('activation_function', ['tanh', 'relu', 'leakyrelu'])
+    distribution = trial.suggest_categorical('distribution', ['gaussian', 'truncatedgaussian'])
+    cliptype = trial.suggest_categorical('cliptype', ['clipbynorm', 'clipbyvalue'])
+    learntype = trial.suggest_categorical('learntype', ['classic', 'learncriticfirst'])
+
+    if n_steps < batch_size:
+        nminibatches = 1
+    else:
+        nminibatches = int(n_steps / batch_size)
+
+    hyperparameters = {
+        'n_steps': n_steps,
+        'nminibatches': nminibatches,
+        'gamma': gamma,
+        'learning_rate': learning_rate,
+        'ent_coef': ent_coef,
+        'cliprange_ac': cliprange_ac,
+        'cliprange_norm': cliprange_norm,
+        'sigma': sigma,
+        'noptepochs': noptepochs,
+        'lam': lam,
+        'cliptype': cliptype,
+        'learntype': learntype
+    }
+
+    polargs = dict()
+
+    if activation_function == 'tanh':
+        polargs = dict(act_fun=lambda x: tf.tanh(x))
+    elif activation_function == 'relu':
+        polargs = dict(act_fun=lambda x: tf.nn.relu(x))
+    elif activation_function == 'leakyrelu':
+        polargs = dict(act_fun=lambda x: tf.nn.leaky_relu(x, alpha=0.01))
+
+    polargs['pdtype'] = distribution
+
+    hyperparameters['policy_kwargs'] = polargs
+
+    return hyperparameters
+
 
 HYPERPARAMS_SAMPLER = {
     'ppo2': sample_ppo2_params,
@@ -406,5 +465,6 @@ HYPERPARAMS_SAMPLER = {
     'ddpg': sample_ddpg_params,
     'her': sample_her_params,
     'acktr': sample_acktr_params,
-    'td3': sample_td3_params
+    'td3': sample_td3_params,
+    'penfac': sample_penfac_params
 }
